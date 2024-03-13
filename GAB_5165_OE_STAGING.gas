@@ -1,0 +1,967 @@
+Program.Sub.Preflight.Start
+Variable.Global.sOrder.Declare(String)
+Variable.Global.sJob.Declare(String)
+Variable.Global.sSuffix.Declare(String)
+Variable.Global.sPart.Declare(String)
+Variable.Global.sOrdLine.Declare(String)
+Variable.Global.sShipment.Declare(String)
+Variable.Global.sQuantity.Declare(String)
+Variable.Global.sJobSuffix.Declare(String)
+Variable.Global.sFromLoc.Declare(String)
+Variable.Global.fOrdQty.Declare(Float,0)
+Variable.Global.sBin.Declare(String)
+Variable.Global.sHeat.Declare(String)
+Variable.Global.sSerial.Declare(String)
+Variable.Global.sTransID.Declare(String)
+Variable.Global.sResult.Declare(String)
+Variable.Global.fQuantity.Declare(Float,0)
+Variable.Global.sPrice.Declare(String)
+Variable.Global.sOrderAndLine.Declare(String)
+Variable.Global.sDateTime.Declare(String)
+Variable.Global.sFilePath.Declare(String)
+Variable.Global.sFile.Declare(String)
+Variable.Global.sOrderFilePath.Declare(String)
+Variable.Global.sPackNo.Declare(String)
+Variable.Global.sTransSeq.Declare(String)
+Variable.Global.sLot.Declare(String)
+Variable.UDT.uDiscount.Define("Order_No",String)
+Variable.UDT.uDiscount.Define("Part",String)
+Variable.UDT.uDiscount.Define("Discount_Price",String)
+Variable.UDT.uDiscount.Define("UOM",String)
+Variable.UDT.uDiscount.Define("Amt_Cost",Float,Amt_Cost)
+Variable.uGlobal.uDiscount.Declare("uDiscount")
+Variable.Global.sDiscount.Declare(String)
+Variable.Global.sUM.Declare(String)
+Variable.Global.sOrderCC.Declare(String)
+Variable.Global.sPrinter.Declare(String)
+Variable.Global.sUID.Declare(String)
+Variable.Global.sUserID.Declare(String)
+Variable.Global.sContainer.Declare(String)
+Variable.Global.sWeight.Declare(String)
+Variable.Global.sDescription.Declare(String)
+Variable.Global.sCustomer.Declare(String)
+Variable.Global.sPL.Declare(String)
+Variable.Global.sResultID.Declare(String)
+Variable.Global.bPackIterate.Declare(Boolean,False)
+Variable.Global.bWeight.Declare(Boolean,False)
+Variable.Global.bStage.Declare(Boolean,True)
+Variable.Global.sLabel.Declare(String)
+Variable.UDT.uPrintLabel.Define("PART",String,PART)
+Variable.UDT.uPrintLabel.Define("PACK_NO",String,PACK_NO)
+Variable.UDT.uPrintLabel.Define("QTY",String,QTY)
+Variable.UDT.uPrintLabel.Define("DESCR",String,DESCR)
+Variable.UDT.uPrintLabel.Define("CARTON",String,CARTON)
+Variable.UDT.uPrintLabel.Define("ORDER_NO",String,ORDER_NO)
+Variable.UDT.uPrintLabel.Define("WEIGHT",String,WEIGHT)
+Variable.UDT.uPrintLabel.Define("LABEL_COPY",String,LABEL_COPY)
+Variable.UDT.uPrintLabel.Define("U4",String,U4)
+Variable.UDT.uPrintLabel.Define("U5",String,U5)
+Variable.UDT.uPrintLabel.Define("U6",String,U6)
+Variable.uGlobal.uPrintLabel.Declare("uPrintLabel")
+v.Global.sToLoc.Declare(String,"10")
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+v.Local.sSql.Declare(String)
+v.Local.sReturn.Declare(String)
+v.Local.fReturn.Declare(Float)
+v.Local.iLen.Declare(Long)
+
+'f.Intrinsic.Debug.EnableLogging
+
+'V.Global.sTransID.Set("000000343")
+v.Global.sTransID.Set(v.Passed.DATA-TRANSID)
+v.Global.sTransSeq.Set("0000")
+
+	
+'Function.Intrinsic.Debug.InvokeDebugger
+Function.Intrinsic.Debug.Stop
+
+'open a connection
+f.ODBC.Connection!conx.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+Function.ODBC.Connection!Cony.OpenConnection(V.Ambient.Ccon,V.Ambient.CUser,V.Ambient.CPass)
+'get label printer and user ID
+F.Intrinsic.String.Build("Select DEFAULT_PRINTER,LABEL_PRINTER,USER_ID  from WIRELESS_HDR where TRANS_ID = '{0}'",V.Global.sTransID,V.Local.ssql)
+	Function.ODBC.Connection!Conx.OpenRecordsetRO("rstWIR1",V.Local.ssql)
+	'V.Global.sPrinter.Set(V.ODBC.Conx!rstWIR1.FieldVal!LABEL_PRINTER)
+	V.Global.sUserID.Set(V.ODBC.Conx!rstWIR1.FieldVal!USER_ID)
+	F.odbc.Conx!rstWIR1.Close
+' lookup printer path for user	
+	F.Intrinsic.String.Concat("SELECT UID FROM MOBILE_USER_INFO where USERID =  '",V.global.sUserID,"'",V.Local.ssql)
+	Function.ODBC.Connection!Cony.OpenRecordsetRO("rstWIR5",V.Local.ssql)
+	V.global.sUID.Set(V.ODBC.Cony!rstWIR5.FieldVal!UID)
+	F.Intrinsic.String.Concat("SELECT NAME FROM MOBILE_USER_PRINTER where (TYPE = '2' OR TYPE = '6') AND UID = '",V.global.sUID,"'",V.Local.ssql)
+	Function.ODBC.Connection!Cony.OpenRecordsetRO("rstWIR6",V.Local.ssql)
+	F.Intrinsic.Control.If(V.ODBC.Cony!rstWIR6.EOF,=,False)
+	V.global.sPrinter.Set(V.ODBC.Cony!rstWIR6.FieldVal!NAME)
+	F.Intrinsic.String.Trim(V.global.sPrinter,V.global.sPrinter)
+	F.Intrinsic.Control.EndIf
+	F.odbc.Cony!rstWIR6.Close
+'get the data from the mobile transaction
+f.Intrinsic.String.Build("select FIELD_1, FIELD_2, FIELD_3, FIELD_4, FIELD_5, FIELD_6 from v_wireless_line where trans_id = '{0}' and seq  = '{1}'",v.Global.sTransID,v.Global.sTransSeq,v.Local.sSql)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSql,v.Local.sReturn)
+'split the return in to the values we need
+f.Intrinsic.String.Split(v.Local.sReturn,"*!*",v.Local.sReturn)
+v.Global.sOrder.Set(v.Local.sReturn(0))
+v.Global.sJobSuffix.Set(v.Local.sReturn(1))
+v.Global.sQuantity.Set(v.Local.sReturn(2))
+V.Global.sContainer.Set(v.Local.sReturn(3))
+v.Global.sWeight.Set(v.Local.sReturn(4))
+v.Global.sLabel.Set(v.Local.sReturn(5))
+v.Global.sSerial.Set(v.Local.sReturn(1))
+'split the jobsuffix in to segments
+
+'CHECK TO MAKE SURE SOMETHING IS INPUTTED IN SERIAL FIELD ON WEB FORM
+f.Intrinsic.Control.If(v.Global.sSerial,=,"")
+	F.Intrinsic.String.Build("Serial # {0} is not valid input, Try again.",v.Global.sSerial,v.Global.sResult)
+	f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Global.sResult)
+	f.Intrinsic.Control.End
+f.Intrinsic.Control.EndIf
+
+v.Local.bdash.Declare(boolean)
+f.Intrinsic.String.IsInString(v.Global.sJobSuffix,"-",True,v.Local.bdash)
+f.Intrinsic.Control.If(v.Global.sJobSuffix.Length,>,"6")
+F.Intrinsic.Control.AndIf(v.Local.bdash,=,"True")
+	f.Intrinsic.String.Split(v.Global.sJobSuffix,"-",v.Local.sReturn)
+	v.Global.sJob.Set(v.Local.sReturn(0))
+	v.Global.sSuffix.Set(v.Local.sReturn(1))
+f.Intrinsic.Control.Else
+	v.Global.sJob.Set(v.Global.sJobSuffix)
+f.Intrinsic.Control.EndIf
+
+
+
+'Format weight if it's been entered.
+f.Intrinsic.Control.If(v.Global.sWeight,>,"0")
+	f.Intrinsic.String.Instr(v.Global.sWeight,".",1,v.Local.iLen)
+	f.Intrinsic.Control.If(v.Local.iLen,>,0)
+		f.Intrinsic.String.Split(v.Global.sWeight,".",v.Global.sWeight)
+		f.Intrinsic.String.RPad(v.Global.sWeight(1),"0",4,v.Global.sWeight(1))
+		f.Intrinsic.String.Concat(v.Global.sWeight(0),".",v.Global.sWeight(1),v.Global.sWeight)
+	f.Intrinsic.Control.Else
+		f.Intrinsic.String.Concat(v.Global.sWeight,".0000",v.Global.sWeight)
+	f.Intrinsic.Control.EndIf
+	v.Global.bWeight.Set(True)
+f.Intrinsic.Control.EndIf
+
+
+
+'get the pack number from the passed order number
+f.Intrinsic.Control.CallSub(get_packno)
+
+
+
+'make sure the carton being passed isn't already closed
+f.Intrinsic.Control.CallSub(get_carton)
+
+F.Intrinsic.Debug.Stop
+
+'there is a quantity in the transaction then we have to stage
+f.Intrinsic.Control.If(v.Global.bStage,=,True)
+	'get the part number from the work order
+	f.Intrinsic.Control.CallSub(get_part)
+
+F.Intrinsic.Debug.Stop
+	
+	'get the line info from the sales order
+	f.Intrinsic.Control.CallSub(get_soline)
+
+F.Intrinsic.Debug.Stop
+
+	'returning from update line or add line
+	f.Intrinsic.Control.CallSub(stage_item)
+f.Intrinsic.Control.EndIf
+
+F.Intrinsic.Debug.Stop
+
+f.Intrinsic.Control.If(v.Global.bWeight,=,True)
+	f.Intrinsic.Control.CallSub(set_weight)
+f.Intrinsic.Control.Else
+'	F.Intrinsic.String.Build("Labels printed for order {0} packing {1}",v.Global.sOrder,v.Global.sPackNo,v.Global.sResult)
+'	f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Global.sResult)
+f.Intrinsic.Control.EndIf
+
+F.Intrinsic.Debug.Stop
+
+
+'using this to validate that all transactions were successfull in the wl_audit_log
+Function.Intrinsic.UI.Sleep(3)
+f.Intrinsic.Control.CallSub(check_transactions)
+
+'returning from a successful staged item
+f.Global.mobile.setcustomresult(v.Caller.CompanyCode,v.Global.sTransID,v.Global.sResult)
+
+'print the label if requested 
+'Five Star - no labels required
+'f.Intrinsic.Control.If(v.Global.sLabel,=,"on")
+'	f.Intrinsic.Control.CallSub(print_label)
+'f.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.CallSub(unload)
+
+Program.Sub.Main.End
+
+Program.Sub.get_part.Start
+v.Local.ssql.Declare(String)
+v.Local.sReturn.Declare(String)
+v.Local.fQuantity.Declare(Float)
+v.Local.fItemQty.Declare(Float)
+
+'build query to retrieve part from item master
+f.Intrinsic.String.Build("select it.part, it.location, it.lot, it.bin, it.heat, it.serial_number, im.description, im.um_inventory, im.product_line, it.quantity from v_item_master it left join v_inventory_mstr im on it.part = im.part and it.location = im.location where SERIAL_NUMBER = '{0}' and quantity > 0 and allocated <> 'Y'",v.Global.sSerial,v.Local.ssql)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.ssql,v.Local.sReturn)
+f.Intrinsic.String.Split(v.Local.sReturn,"*!*",v.Local.sReturn)
+f.Intrinsic.Control.If(v.Local.sReturn(0),=,"")
+	f.Intrinsic.String.Build("<br><font color = 'red'>FAILED:</font> The serial# {0} was not found in the item master, or no quantity available</br><br>please check the lot/bin and inventory on hand and try again</br>",v.Global.sSerial,v.Global.sResult)
+	f.Global.mobile.setcustomresult(v.Caller.CompanyCode,v.Global.sTransID,v.Global.sResult)
+	f.Intrinsic.Control.CallSub(unload)
+f.Intrinsic.Control.Else
+	v.Global.sPart.Set(v.Local.sReturn(0))
+	v.Global.sFromLoc.Set(v.Local.sReturn(1))
+	v.Global.sLot.Set(v.Local.sReturn(2))
+	v.Global.sBin.Set(v.Local.sReturn(3))
+	v.Global.sHeat.Set(v.Local.sReturn(4))
+	v.Global.sSerial.Set(v.Local.sReturn(5))
+	v.Global.sDescription.Set(v.Local.sReturn(6))
+	v.Global.sUM.Set(v.Local.sReturn(7))
+	v.Global.sPL.Set(v.Local.sReturn(8))
+	v.Local.fItemQty.Set(v.Local.sReturn(9))
+f.Intrinsic.Control.EndIf
+
+v.Local.fQuantity.Set(v.Global.sQuantity)
+'if true, we don't have enough quantity of this lot to stage, end the script.
+f.Intrinsic.Control.If(v.Local.fItemQty,<,v.Local.fQuantity)
+	f.Intrinsic.String.Build("<br><font color = 'red'>FAILED:</font> Quantity Staged {0} is less than Quantity Available {1}</br>",v.Local.fQuantity,v.Local.fItemQty,v.Local.sReturn)
+	f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Local.sReturn)
+	f.Intrinsic.Control.CallSub(unload)
+f.Intrinsic.Control.EndIf
+
+f.Intrinsic.Control.ExitSub
+
+Program.Sub.get_part.End
+
+Program.Sub.get_soline.Start
+v.Local.ssql.Declare(String)
+v.Local.sReturn.Declare(String)
+'make sure the order header exists
+f.Intrinsic.String.Build("select order_no, customer from v_order_header where order_no = '{0}'",v.Global.sOrder,v.Local.ssql)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.ssql,v.Local.sReturn)
+f.Intrinsic.Control.If(v.Local.sReturn,=,"")
+	f.Intrinsic.String.Build("<br><font color = 'red'>FAILED:</font>The sales order '{0}' was not found.</br><br>Please check the number and try again</br>",v.Global.sOrder,v.Global.sResult)
+	f.Global.mobile.setcustomresult(v.Caller.CompanyCode,v.Global.sTransID,v.Global.sResult)
+	f.Intrinsic.Control.CallSub(unload)
+f.Intrinsic.Control.Else
+	f.Intrinsic.String.Split(v.Local.sReturn,"*!*",v.Local.sReturn)
+	v.Global.sCustomer.Set(v.Local.sReturn(1))
+	'the order number exists, by default we have a temp line added to the sales order.  We need to delete that. 
+	f.Intrinsic.String.Build("DELETE from ORDER_LINES where ORDER_NO = '{0}' AND PART = '9999'",V.Global.sOrder,V.Local.ssql)
+	F.ODBC.Connection!conx.Execute(V.Local.ssql)
+	'check to see if the part number has already been added to the sales order
+	f.Intrinsic.String.Build("select order_no, record_no, qty_ordered from v_order_lines where order_no = '{0}' and part = '{1}' and location = '{2}'",v.Global.sOrder,v.Global.sPart,v.Global.sFromLoc,v.Local.ssql)
+	f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.ssql,v.Local.sReturn)
+	'if the return was null, the order line doesn't exist so we have to create it.
+	f.Intrinsic.Control.If(v.Local.sReturn,=,"")
+		f.Intrinsic.Control.CallSub(createupload2)
+		f.Intrinsic.Control.CallSub(upload_line)
+		f.Intrinsic.Control.CallSub(get_newline)
+	f.Intrinsic.Control.Else
+		'if the return is not null, get the line number and the existing quantity, then go to update line since it already exists
+		f.Intrinsic.String.Split(v.Local.sReturn,"*!*",v.Local.sReturn)
+		v.Global.fOrdQty.Set(v.Local.sReturn(2))  'this quantity may need to be unallocated
+		v.Global.sOrdLine.Set(v.Local.sReturn(1))
+'		f.Intrinsic.Control.CallSub(update_line)
+	f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.EndIf
+
+f.Intrinsic.Control.ExitSub
+
+Program.Sub.get_soline.End
+
+Program.Sub.update_line.Start
+V.Local.sQuery.Declare(String)
+V.Local.fLineQty.Declare(Float)
+V.Local.fBOQty.Declare(Float)
+V.Local.fUnitCost.Declare(Float)
+V.Local.fUnitPrice.Declare(Float)
+V.Local.fExtPrice.Declare(Float)
+V.Local.sQuery2.Declare(String)
+
+'The part already existed on the order, so we are updating the quantity ordered, back ordered, extension, and extension_order.
+f.Intrinsic.String.Build("select PART, LOCATION, QTY_ORDERED, QTY_BO, PRICE, COST, EXTENSION, EXTENSION_ORDER  from ORDER_LINES where PART = '{0}' and ORDER_NO = '{1}' and RECORD_NO = '{2}'",V.Global.sPart,V.Global.sOrder,V.Global.sOrdLine,V.Local.sQuery)
+F.ODBC.Connection!Conx.OpenRecordsetRW("rstOL",V.Local.sQuery)
+F.Intrinsic.Control.If(V.ODBC.Conx!rstOL.EOF,=,False)
+	'convert the picked quantity to LONG so it can be added as a line item
+	F.Intrinsic.Math.ConvertToLong(V.Global.sQuantity,V.Global.fQuantity)
+	V.Local.fLineQty.Set(V.ODBC.Conx!rstOL.FieldVal!QTY_ORDERED)
+	V.Local.fBOQty.Set(V.ODBC.Conx!rstOL.FieldVal!QTY_BO)
+	V.Local.fUnitCost.Set(V.ODBC.Conx!rstOL.FieldVal!COST)
+	V.Local.fUnitPrice.Set(V.ODBC.Conx!rstOL.FieldVal!PRICE)
+	V.Local.fExtPrice.Set(V.ODBC.Conx!rstOL.FieldVal!EXTENSION)
+	F.Intrinsic.Math.Add(V.Local.fLineQty,V.Global.fQuantity,V.Local.fLineQty)
+	F.Intrinsic.Math.Mult(V.Local.fLineQty,V.local.fUnitPrice,V.Local.fExtPrice)
+	F.Intrinsic.Math.Add(V.Local.fBOQty,V.Global.fQuantity,V.Local.fBOQty)
+	F.ODBC.Conx!rstOL.Set!QTY_ORDERED(V.Local.fLineQty)
+	F.ODBC.Conx!rstOL.Set!QTY_BO(V.Local.fBOQty)
+	F.ODBC.Conx!rstOL.Set!EXTENSION(V.Local.fExtPrice)
+	F.ODBC.Conx!rstOL.Set!EXTENSION_ORDER(V.Local.fExtPrice)
+	F.ODBC.Conx!rstOL.Update
+F.Intrinsic.Control.Endif
+
+f.Intrinsic.Control.ExitSub
+
+Program.Sub.update_line.End
+
+Program.Sub.unload.Start
+f.ODBC.Connection!conx.Close
+f.Intrinsic.Control.End
+
+Program.Sub.unload.End
+
+Program.Sub.upload_line.Start
+V.Local.sParam.Declare(String)
+V.Local.sPath.Declare(String)
+V.Local.sTemp.Declare(String)
+
+Function.Intrinsic.Debug.Stop
+
+V.Local.sParam.Set("")
+'f.Intrinsic.String.Trim(v.Caller.User,v.Local.sTemp)
+'F.Intrinsic.String.Rpad(v.Local.sTemp,"~",8,Variable.Local.sTemp)
+F.Intrinsic.String.Concat(V.Local.sParam,Variable.Caller.CompanyCode,v.Caller.User,v.Global.sOrderFilePath,Variable.Local.sParam)
+F.Intrinsic.Task.Launchgsssync("ORDADCMD","-c",v.Local.sParam)
+
+'call sub to set order line order_line.trnsfr_locn = '2'
+f.Intrinsic.Control.CallSub(set_SOline_tranferToLoc)
+
+F.Intrinsic.Control.ExitSub
+
+Program.Sub.upload_line.End
+
+Program.Sub.stage_item.Start
+v.Local.ssql.Declare(String)
+v.Local.sReturn.Declare(String)
+v.Local.sPacklist.Declare(String)
+v.Local.fPacklist.Declare(Float)
+v.Local.sTransID.Declare(String)
+'///////  instead of pulling the top 1 carton, pull all cartons for the packlist and loop through them to validate the next
+'//////   carton needed for that part.
+
+'check the carton number to determine if we have to unstage the existing record before staging the new total quantity
+'f.Intrinsic.String.Build("select top 1 CRTN_NO FROM V_BOL_PACK_DTL where PCK_NO = '{0}' AND ORDER_NO = '{1}' AND PART = '{2}' AND LOCN = '{3}'",V.Global.sPackNo,V.Global.sOrder,V.Global.sPart,V.Global.sFromLoc,V.Local.ssql)
+'F.ODBC.Connection!conx.ExecuteAndReturn(V.Local.ssql,V.Local.sReturn)
+'F.Intrinsic.String.LPad(V.Global.sContainer,"0",8,V.Global.sContainer)
+'F.Intrinsic.Control.If(V.Global.sContainer,=,V.Local.sReturn)
+'	if the part/carton we are passing from the transaction already exists, we have to unstage that record
+'	F.Intrinsic.Control.CallSub(remove_stage)
+'	addressing the fact that we have added another mobile transaction to the process
+'	f.Intrinsic.Math.Add(v.Global.sTransID,1,v.Local.sTransID)
+'	f.Intrinsic.Math.Add(v.Global.sQuantity,v.Global.fOrdQty,v.Global.sQuantity)
+'f.Intrinsic.Control.EndIf
+
+'set the transID based on where we're at in the process
+'f.Intrinsic.Control.If(v.Local.sTransID,>,v.Global.sTransID)
+'	f.Intrinsic.Math.Add(v.Local.sTransID,1,v.Local.sTransID)
+'f.Intrinsic.Control.Else
+'	f.Intrinsic.Math.Add(v.Global.sTransID,1,v.Local.sTransID)
+'f.Intrinsic.Control.EndIf
+
+V.Local.sSql.Set("Select TOP 1 TRANS_ID from WIRELESS_HDR ORDER BY TRANS_ID DESC")
+	Function.ODBC.Connection!Conx.OpenRecordsetRO("WIR8",V.Local.sSql)
+	F.Intrinsic.Control.If(V.ODBC.Conx!WIR8.EOF,=,False)
+	V.Local.sTransID.Set(V.ODBC.Conx!WIR8.FieldVALTRIM!TRANS_ID)
+	F.Intrinsic.Math.Add(V.Local.sTransID,1,V.Local.sTransID)
+	F.ODBC.Conx!WIR8.Close
+	F.Intrinsic.Control.EndIf
+
+'setting the result ID for later use.  Can loop through the transactions and make sure they were all successful before posting the result
+v.Global.sResultID.Set(v.Local.sTransID)
+
+f.Intrinsic.String.LPad(v.Local.sTransID,"0",9,v.Local.sTransID)
+
+'write the wireless header record
+V.Local.sSql.Set("SELECT * from WIRELESS_HDR")
+Function.ODBC.Connection!Conx.OpenRecordsetRW("rstNew",V.Local.sSql)
+
+	Function.ODBC.Conx!rstNew.AddNew
+	Function.ODBC.Conx!rstNew.Set!TRANS_ID(V.Local.stransID)
+	Function.ODBC.Conx!rstNew.Set!TRANS_TYPE("S10")
+	Function.ODBC.Conx!rstNew.Set!ATTEMPTED_DATE("00000000")
+	Function.ODBC.Conx!rstNew.Set!ATTEMPTED_TIME("00000000")
+	'Function.ODBC.Conx!rstNew.Set!LABEL_PRINTER(V.Global.sPrinter)
+	Function.ODBC.Conx!rstNew.Set!USER_ID(V.Global.sUserID)
+	Function.ODBC.Conx!rstNew.Set!BATCH(0)
+	Function.ODBC.Conx!rstNew.Set!Attempted_Flag("Y")
+	F.ODBC.Conx!rstNew.Update
+	F.ODBC.Conx!rstNew.Close
+
+f.ODBC.Connection!conx.OpenLocalRecordsetRW("wir","select * from wireless_line")
+f.ODBC.conx!wir.AddNew
+f.ODBC.conx!wir.Set!TRANS_ID(V.Local.sTransID)
+F.ODBC.conx!wir.Set!SEQ(V.Global.sTransSeq)
+F.ODBC.conx!wir.Set!TRANS_TYPE("S10")
+F.ODBC.conx!wir.Set!FIELD_1(V.Global.sPackNo)
+F.ODBC.conx!wir.Set!FIELD_2(V.Global.sOrder)
+F.ODBC.conx!wir.Set!FIELD_3(V.Global.sOrdLine)
+F.ODBC.conx!wir.Set!FIELD_4(V.Global.sPart)
+F.ODBC.conx!wir.Set!FIELD_5(V.Global.sFromLoc)
+F.ODBC.conx!wir.Set!FIELD_6(V.Global.sLot)
+F.ODBC.conx!wir.Set!FIELD_7(V.Global.sBin)
+F.ODBC.conx!wir.Set!FIELD_8(V.Global.sHeat)
+F.ODBC.conx!wir.Set!FIELD_9(V.Global.sSerial)
+F.ODBC.conx!wir.Set!FIELD_10(V.Global.sContainer)
+F.ODBC.conx!wir.Set!FIELD_14(V.Global.sQuantity)
+F.ODBC.conx!wir.Set!FIELD_16(V.Global.sWeight)
+F.ODBC.conx!wir.Set!FIELD_20(1)
+F.ODBC.conx!wir.Set!FIELD_24(1)
+F.ODBC.conx!wir.Set!FIELD_25("Y")
+F.ODBC.conx!wir.Set!ERROR_ID(0)
+F.ODBC.conx!wir.Update
+F.ODBC.conx!wir.Close
+
+'REMOVE ATTEMPTED_FLAG FOR WIREPOLL TO PROCESS
+F.Intrinsic.String.Build("UPDATE WIRELESS_HDR SET ATTEMPTED_FLAG= '' WHERE TRANS_ID = '{0}'",V.Local.stransID,V.Local.sSql)
+F.ODBC.Connection!Conx.Execute(V.Local.sSql)
+
+
+F.Intrinsic.String.Build("<br>Serial# <font color='green'><b><u>{0}</u></b></font> staged to Order <font color='green'><b><u>{1}</u></b></font> packlist <font color='green'><b><u>{2}</u></b></font></br><br>with quantity <font color='green'><b><u>{3}</u></b></font> in container <font color='green'><b><u>{4}</u></b></font></br>",v.Global.sSerial,v.Global.sOrder,v.Global.sPackNo,v.Global.sQuantity,v.Global.sContainer,v.Global.sResult)
+
+v.Global.bWeight.Set(False)
+
+F.Intrinsic.Control.ExitSub
+Program.Sub.stage_item.End
+
+Program.Sub.createupload2.Start
+V.Local.iRow.Declare(Long)
+V.Local.sRow.Declare(String)
+V.Local.i.Declare(Long)
+V.Local.sCol.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sSO.Declare(String)
+V.Local.sSOvar3.Declare(String)
+V.Local.sMsg.Declare(String)
+V.Local.sRev.Declare(String)
+V.Local.sPart.Declare(String)
+V.Local.sPartRev.Declare(String)
+V.Local.sText.Declare(String)
+V.Local.sTemp.Declare(String)
+V.Local.sLine.Declare(String)
+V.Local.fLBS.Declare(Float)
+V.Local.sPath.Declare(String)
+V.Local.bExists.Declare(Boolean)
+V.Local.sCust.Declare(String)
+V.Local.iUB.Declare(Long)
+V.Local.iVal.Declare(Long)
+V.Local.iLen.Declare(Long)
+V.Local.sSheetname.Declare(String)
+V.Local.sLoc.Declare(String)
+V.Local.sUmi.declare(String)
+v.Local.sReturn.Declare(String)
+V.Local.iUB.Set(-1)
+V.uGlobal.uDiscount.Redim(-1,-1)
+
+'have to debug the part, and rev segments of the make file and the upload file
+F.Intrinsic.String.RPad(V.Global.sPart," ",20,V.Global.sPart)
+
+F.Intrinsic.String.Concat("Select * from V_ORDER_HEADER Where ORDER_NO = '",V.gLOBAL.sOrder.Trim,"'",V.Local.sSQL)
+F.ODBC.Connection!conx.OpenRecordsetRO("rstORD",V.Local.sSQL)
+F.Intrinsic.Control.If(V.Odbc.conx!rstORD.EOF,=,False)
+'-------------------------------------------------------------------'ifpartdoesnotexistskiprecord----------------------------------------------------------------------------------
+	F.Intrinsic.String.Concat("select * from V_Inventory_Mstr where Part='",V.global.sPart,"' and location = '",V.Global.sFromLoc,"'",V.Local.sSQL)
+	F.ODBC.Connection!conx.OpenRecordsetRO("rstINV",V.Local.sSQL)
+	F.Intrinsic.Control.If(V.ODBC.Conx!rstINV.EOF,=,False)
+'------------------------------------------------Calculatediscountprice--------------------------------------------------------------------------------------------------------------
+		F.Intrinsic.Control.If(V.uGlobal.uDiscount.UBound,=,-1)
+			V.uGlobal.uDiscount.Redim(0,0)
+			V.uGlobal.uDiscount!Order_No.Set(V.Global.sOrder)
+			V.uGlobal.uDiscount!Part.Set(V.global.sPart)
+			F.Intrinsic.Control.If(V.ODBC.conx!rstORD.FieldValTrim!Order_discount,<>,0)
+				F.Intrinsic.Math.Sub(1,V.ODBC.conx!rstORD.FieldValTrim!Order_discount,V.Local.sTemp)
+				F.Intrinsic.Math.Mult(V.ODBC.conx!rstINV.FieldValTrim!AMT_PRICE,V.Local.sTemp,V.uGlobal.uDiscount!Discount_Price)
+				V.uGlobal.uDiscount!Amt_Cost.Set(V.ODBC.conx!rstINV.FieldValFloat!AMT_COST)
+				V.uGlobal.uDiscount!UOM.Set(V.ODBC.conx!rstINV.FieldValTrim!UM_INVENTORY)
+			F.Intrinsic.Control.Else
+				V.uGlobal.uDiscount!Discount_Price.Set(0)
+				V.uGlobal.uDiscount!Amt_Cost.Set(V.ODBC.conx!rstINV.FieldValFloat!AMT_COST)
+				V.uGlobal.uDiscount!UOM.Set(V.ODBC.conx!rstINV.FieldValTrim!UM_INVENTORY)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.Else
+			V.Local.iUB.Set(V.uGlobal.uDiscount.UBound)
+			F.Intrinsic.Math.Add(V.Local.iUB,1,V.Local.iUB)
+			V.uGlobal.uDiscount.RedimPreserve(V.uGlobal.uDiscount.LBound,V.Local.iUB)
+			V.uGlobal.uDiscount(v.Local.iUB)!Order_No.Set(V.Global.sOrder)
+			V.uGlobal.uDiscount(v.Local.iUB)!Part.Set(V.global.spart)
+			F.Intrinsic.Control.If(V.ODBC.conx!rstORD.FieldValTrim!Order_discount,<>,0)
+				F.Intrinsic.Math.Sub(1,V.ODBC.conx!rstORD.FieldValTrim!Order_discount,V.Local.sTemp)
+				F.Intrinsic.Math.Mult(V.ODBC.conx!rstINV.FieldValTrim!AMT_PRICE,V.Local.sTemp,V.uGlobal.uDiscount(v.Local.iUB)!Discount_Price)
+				V.Global.sPrice.Set(V.ODBC.conx!rstINV.FieldValTrim!AMT_PRICE)
+				V.uGlobal.uDiscount(v.Local.iUB)!Amt_Cost.Set(0)
+				V.uGlobal.uDiscount(v.Local.iUB)!UOM.Set(V.ODBC.conx!rstINV.FieldValTrim!UM_INVENTORY)
+			F.Intrinsic.Control.Else
+				V.uGlobal.uDiscount!Discount_Price.Set(0)
+				V.uGlobal.uDiscount(v.Local.iUB)!Amt_Cost.Set(0)
+				V.uGlobal.uDiscount(v.Local.iUB)!UOM.Set(V.ODBC.conx!rstINV.FieldValTrim!UM_INVENTORY)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Else
+		F.Intrinsic.Control.CallSub(Unload)
+	F.Intrinsic.Control.Endif
+'--------------------------------------------get the last line number on the sales order, add 10---------------------------------
+	f.Intrinsic.String.Build("select top 1 record_no from v_order_lines where order_no = '{0}' order by record_no desc",v.Global.sOrder,v.Local.sSQL)
+	f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSQL,v.Local.sReturn)
+	f.Intrinsic.Control.If(v.Local.sReturn,>,"")
+		f.Intrinsic.Math.Add(v.Local.sReturn,10,v.Local.sLine)
+		F.Intrinsic.String.LPad(V.Local.sLine,"0",3,V.Local.sLine)
+	f.Intrinsic.Control.Else
+		v.Local.sLine.Set("010")
+	f.Intrinsic.Control.EndIf		
+'------------------CheckifSOlinesexist for this part THIS SHOULD ALWAYS BE EOF=TRUE because "modify" line has already been addressed---------------------------------------------------------------
+	F.Intrinsic.String.Build("Select * From V_Order_Lines Where Order_No = '{0}' and part = '{1}' and location = '{2}'",v.Global.sOrder,v.Global.sPart,v.Global.sFromLoc,v.Local.sSQL)
+	F.ODBC.Connection!conx.OpenRecordsetRO("rstLINES",V.Local.sSQL)
+	F.Intrinsic.Control.If(V.ODBC.conx!rstLINES.EOF,=,True)
+		'O = Order, Q = Quote
+		F.Intrinsic.String.Concat(V.Local.sText,"O",V.Local.sText)
+		'Customer
+		F.Intrinsic.String.RPad(V.ODBC.conx!rstORD.FieldValTrim!CUSTOMER," ",7,V.Local.sCust)
+		F.Intrinsic.String.Concat(V.Local.sText,V.Local.sCust,V.Local.sText)
+		'Order No
+		F.Intrinsic.String.Concat(V.Local.sText,V.Global.sOrder,V.Local.sText)
+		'Part
+		F.Intrinsic.String.Concat(V.Local.sText,V.Global.sPart,V.Local.sText)
+		'unit of measure
+		V.Local.sUmi.set(V.odbc.conx!rstINV.FieldVal!UM_INVENTORY)
+		'Fill
+		F.Intrinsic.String.Rpad(V.Local.sTemp," ",18,V.Local.sTemp)
+		F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+		'LOC
+		F.Intrinsic.String.Rpad(V.ODBC.conx!rstINV.FieldVal!LOCATION," ",2,V.Local.sTemp)
+		F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+		'PL
+		F.Intrinsic.String.RPad(V.ODBC.conx!rstINV.FieldValTrim!PRODUCT_LINE," ",5,V.Local.sTemp)
+		F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+		'Description
+		F.Intrinsic.String.RPad(V.ODBC.conx!rstINV.FieldValTrim!DESCRIPTION," ",30,V.Local.sTemp)
+		F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+		'Line
+		F.Intrinsic.String.Concat(V.Local.sText,V.Local.sLine,V.Local.sText)
+		'Line type
+		F.Intrinsic.String.Concat(V.Local.sText,"S",V.Local.sText)
+		'Qty ordered
+		'F.Intrinsic.Math.ConvertToFloat(V.Global.sQuantity,V.Local.iVal)
+		'F.Intrinsic.Math.Div(V.Local.iVal,10000,V.Local.iVal)
+		'F.Intrinsic.String.ConvertToString(V.Local.iVal,V.Global.sQuantity)
+		F.Intrinsic.String.LPad(V.global.sQuantity,"0",9,V.Local.sTemp)
+		F.Intrinsic.String.RPad(V.Local.sTemp,"0",13,V.Local.sTemp)
+		F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+		'Weight
+		F.Intrinsic.String.Concat("Select * from Inventory_Mst2 where Part='",V.global.spart,"' and location = '",V.Global.sFromLoc,"'",V.Local.sSQL)
+		F.ODBC.Connection!conx.OpenRecordsetRO("rst2",V.Local.sSQL)
+		F.Intrinsic.Control.If(V.Odbc.conx!rst2.EOF,=,False)
+			'F.Intrinsic.Math.Mult(V.Odbc.conx!rst2.FieldVal!Lbs,100,V.Local.iVal)
+			F.Intrinsic.String.LPad(V.Odbc.conx!rst2.FieldVal!Lbs,"0",7,V.Local.sTemp)
+			F.Intrinsic.String.RPad(V.Local.sTemp,"0",10,V.Local.sTemp)
+			F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+		F.Intrinsic.Control.Else
+			F.Intrinsic.String.Concat(V.Local.sText,"0000000000",V.Local.sText)
+		F.Intrinsic.Control.EndIf
+		F.ODBC.conx!rst2.Close
+		'QuotePrice
+		F.Intrinsic.Control.If(V.Global.sPrice,<>,"")
+			'If column D is not equal to blank, including zeroes, use value in Column D as the Quote price for the line( NOT THE HEADER)
+			F.Intrinsic.math.ConvertToLong(V.Global.sPrice,V.Local.iVal)
+			F.Intrinsic.Math.Mult(V.Local.iVal,100,V.Local.iVal)
+			F.intrinsic.String.LPad(V.Local.iVal.String,"0",12,V.Local.sTemp)
+			F.Intrinsic.String.RPad(V.Local.sTemp,"0",16,V.Local.sTemp)
+			F.Intrinsic.String.Concat(V.local.stext,V.local.stemp,V.local.stext)
+			F.Intrinsic.control.if(V.local.stemp,=,"0000000000000000")
+				V.Local.sTemp.Set("")
+				F.Intrinsic.String.LPad(V.Local.sTemp," ",135,V.Local.sTemp)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+				F.Intrinsic.String.RPad(V.Global.sOrderAndLine," ",30,V.Local.sTemp)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+				F.Intrinsic.String.Concat(V.local.stext,V.Local.sUmi,V.Local.sText)
+				V.Local.sTemp.Set("")
+				F.Intrinsic.String.LPad(V.Local.sTemp," ",67,V.Local.sTemp)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Ambient.NewLine,V.Local.sText)
+			F.intrinsic.control.else
+				V.Local.sTemp.Set("")
+				F.Intrinsic.String.RPad(V.Local.sTemp," ",135,V.Local.sTemp)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+				F.Intrinsic.String.RPad(V.Global.sOrderAndLine," ",30,V.Local.sTemp)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+				F.Intrinsic.String.rpad(V.local.stemp," ",98,V.Local.sTemp)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Ambient.newline,V.Local.sText)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.Else
+			V.Local.sTemp.Set("")
+				F.Intrinsic.String.LPad(V.Local.sTemp," ",135,V.Local.sTemp)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+				F.Intrinsic.String.RPad(V.Global.sOrderAndLine," ",30,V.Local.sTemp)
+				F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+			F.Intrinsic.String.Concat(V.local.stext,V.Local.sUmi,V.Local.sText)
+			V.Local.sTemp.Set("1")
+			F.Intrinsic.String.RPad(V.Local.sTemp," ",68,V.Local.sTemp)
+			F.Intrinsic.String.Concat(V.Local.sText,V.Local.sTemp,V.Local.sText)
+			F.Intrinsic.String.Concat(V.Local.sText,V.Ambient.NewLine,V.Local.sText)
+		F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.Else
+			F.Intrinsic.Control.CallSub(Unload)
+	F.Intrinsic.Control.EndIf
+'F.Intrinsic.Control.Next(V.Local.i)
+F.Intrinsic.Control.EndIf
+'F.ODBC.connection!Conx.close
+
+F.Intrinsic.Control.If(V.Local.sText.Length,>=,2)
+	F.Intrinsic.Math.Sub(V.Local.sText.Length,2,V.Local.iLen)
+	F.Intrinsic.String.Left(V.Local.stext,V.Local.ilen,V.Local.sText)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.If(V.Local.sText,<>,"")
+	F.Intrinsic.String.Concat(V.Caller.FilesDir,"\",v.Global.sOrder,v.Global.sorderfilepath)
+	F.Intrinsic.File.Exists(V.Global.sorderfilepath,V.Local.bExists)
+	F.Intrinsic.Control.If(V.Local.bExists,=,True)
+		F.Intrinsic.File.DeleteFile(V.Global.sorderfilepath)
+	F.Intrinsic.Control.EndIf
+	F.Intrinsic.File.String2File(V.Global.sorderfilepath,V.Local.sText)
+F.Intrinsic.Control.EndIf
+
+Program.Sub.createupload2.End
+
+Program.Sub.remove_stage.Start
+v.Local.sTransID.Declare(String)
+v.Local.sSql.Declare(String)
+V.Local.sQuantity.Declare(String)
+
+'set values for the staging transaction
+f.Intrinsic.Math.Add(v.Global.sTransID,1,v.Local.sTransID)
+f.Intrinsic.String.LPad(v.Local.sTransID,"0",9,v.Local.sTransID)
+
+f.ODBC.Connection!conx.OpenLocalRecordsetRW("wir","select * from wireless_line")
+f.ODBC.conx!wir.AddNew
+f.ODBC.conx!wir.Set!TRANS_ID(V.Local.sTransID)
+F.ODBC.conx!wir.Set!SEQ(V.Global.sTransSeq)
+F.ODBC.conx!wir.Set!TRANS_TYPE("S30")
+F.ODBC.conx!wir.Set!FIELD_1(V.Global.sPackNo) 'pack
+F.ODBC.conx!wir.Set!FIELD_2(V.Global.sOrder)  'order
+F.ODBC.conx!wir.Set!FIELD_3(V.Global.sOrdLine) 'order line
+F.ODBC.conx!wir.Set!FIELD_4(V.Global.sPart)  'part
+F.ODBC.conx!wir.Set!FIELD_5(V.Global.sFromLoc) 'location
+f.ODBC.conx!wir.Set!FIELD_6(V.Global.sContainer) 'container
+v.Local.sQuantity.Set(v.Global.fOrdQty)
+f.Intrinsic.String.Concat(v.Local.sQuantity,".0000",v.Local.sQuantity) 
+F.ODBC.conx!wir.Set!FIELD_8(V.Local.sQuantity)  'order line quantity - already staged quantity
+F.ODBC.conx!wir.Set!FIELD_9(V.Global.sLot)  'lot
+F.ODBC.conx!wir.Set!FIELD_10(V.Global.sBin)  'bin
+F.ODBC.conx!wir.Set!FIELD_12(V.Global.sSerial)  'serial
+F.ODBC.conx!wir.Set!ERROR_ID(0)
+F.ODBC.conx!wir.Update
+F.ODBC.conx!wir.Close
+
+'write the wireless header record
+V.Local.sSql.Set("SELECT * from WIRELESS_HDR")
+Function.ODBC.Connection!Conx.OpenRecordsetRW("rstNew",V.Local.sSql)
+
+	Function.ODBC.Conx!rstNew.AddNew
+	Function.ODBC.Conx!rstNew.Set!TRANS_ID(V.Local.stransID)
+	Function.ODBC.Conx!rstNew.Set!TRANS_TYPE("S30")
+	Function.ODBC.Conx!rstNew.Set!ATTEMPTED_DATE("00000000")
+	Function.ODBC.Conx!rstNew.Set!ATTEMPTED_TIME("00000000")
+	'Function.ODBC.Conx!rstNew.Set!LABEL_PRINTER(V.Global.sPrinter)
+	Function.ODBC.Conx!rstNew.Set!USER_ID(V.Global.sUserID)
+	Function.ODBC.Conx!rstNew.Set!BATCH(0)
+	F.ODBC.Conx!rstNew.Update
+	F.ODBC.Conx!rstNew.Close
+
+Program.Sub.remove_stage.End
+
+Program.Sub.check_transactions.Start
+v.Local.iCount.Declare(Long)
+V.Local.iC.Declare(Long)
+v.Local.sSql.Declare(String)
+v.Local.sReturn.Declare(String)
+v.Local.sResult.Declare(String)
+v.Local.sCount.Declare(String)
+
+'starting at the original transaction ID and moving to the last transaction ID, make sure all have posted successfully before printing the label and moving on.
+f.Intrinsic.Control.For(v.Local.iCount,v.Global.sTransID,v.Global.sResultID,1)
+	f.Intrinsic.String.LPad(v.Local.iCount,"0",9,v.Local.sCount)
+	f.Intrinsic.String.Build("select status_flag, descr, audit_error_txt from v_wl_audit_log where trans_id = '{0}'",v.Local.sCount,v.Local.sSql)
+	F.Intrinsic.Control.For(v.Local.iC,1,50,1)
+		f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSql,v.Local.sReturn)
+		F.Intrinsic.Control.If(V.Local.sReturn,>,"")
+			F.Intrinsic.Control.ExitFor(v.Local.iC)
+		F.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.Next(v.Local.iC)
+	f.Intrinsic.String.Split(v.Local.sReturn,"*!*",v.Local.sReturn)
+	f.Intrinsic.Control.If(v.Local.sReturn(0),=,"U")
+		f.Intrinsic.Control.If(v.Local.sReturn(3),>,"")
+			f.Intrinsic.String.Build("<font color = 'red'> FAILED:</font>  {0} with a description of {1},<br><font color = 'red'>FIX QUANTITIES INTERNALLY</font></br>",v.Local.sReturn(1),v.Local.sReturn(2),v.Local.sResult)
+			f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Local.sResult)
+			f.Intrinsic.Control.CallSub(unload)
+		f.Intrinsic.Control.EndIf		
+	f.Intrinsic.Control.EndIf
+	v.Local.sReturn.Set("")
+f.Intrinsic.Control.Next(v.Local.iCount)
+
+'if we pulled a new pack number, we have to iterate the value in the company option
+f.Intrinsic.Control.If(v.Global.bPackIterate,=,True)
+	f.ODBC.Connection!conx.Execute("update op_header set f_long =(f_long + 1) where id = '401060'")
+f.Intrinsic.Control.EndIf
+
+'update the order quantity on the staged record to prevent warning message when opening the shipment in core.
+f.Intrinsic.String.Build("update staging_quantity set qty_ord = '{0}', qty_bo = '{0}' where pck_no = '{1}' and order_no = '{2}' and part = '{4}'",v.Global.sQuantity,v.Global.sPackNo,v.Global.sOrder,v.Global.sPart,v.Local.sSql)
+f.ODBC.Connection!conx.Execute(v.Local.sSql)
+
+f.Intrinsic.Control.ExitSub
+	
+Program.Sub.check_transactions.End
+
+Program.Sub.set_weight.Start
+v.Local.ssql.Declare(string)
+v.Local.sResult.Declare(String)
+v.Local.sTransID.Declare(String)
+
+''we don't want a quantity here, just the weight
+'f.Intrinsic.Control.If(v.Global.sQuantity,>,"")
+'	v.Local.sResult.Set("Quantity not allowed when closing a container")
+'	f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Local.sResult)
+'	f.Intrinsic.Control.CallSub(unload)
+'f.Intrinsic.Control.EndIf
+'make sure we have a container number
+f.Intrinsic.Control.If(v.Global.sContainer,=,"")
+	v.Local.sResult.Set("<font color = 'red'>FAILED</font>  Must enter a container number, please try again")
+	f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Local.sResult)
+	f.Intrinsic.Control.CallSub(unload)
+f.Intrinsic.Control.EndIf
+'make sure we have a valid part number (retrieved from a lot# entered in the form)
+f.Intrinsic.Control.If(v.Global.sPart,=,"")
+	v.Local.sResult.Set("<font color = 'red'>FAILED</font> Requires a Lot# that's in the container")
+	f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Local.sResult)
+	f.Intrinsic.Control.CallSub(unload)
+f.Intrinsic.Control.EndIf
+
+'set the new transaction ID
+f.Intrinsic.Math.Add(v.Global.sTransID,1,v.Local.sTransID)
+f.Intrinsic.String.LPad(v.Local.sTransID,"0",9,v.Local.sTransID)
+f.Intrinsic.String.LPad(v.Global.sContainer,"0",8,v.Global.sContainer)
+
+'setting the result ID for later use.  Can loop through the transactions and make sure 
+'they were all successful before posting the result
+v.Global.sResultID.Set(v.Local.sTransID)
+
+f.ODBC.Connection!conx.OpenLocalRecordsetRW("wir","select * from wireless_line")
+f.ODBC.conx!wir.AddNew
+f.ODBC.conx!wir.Set!TRANS_ID(V.Local.sTransID)
+F.ODBC.conx!wir.Set!SEQ(V.Global.sTransSeq)
+F.ODBC.conx!wir.Set!TRANS_TYPE("S20")
+F.ODBC.conx!wir.Set!FIELD_1(V.Global.sPackNo)
+F.ODBC.conx!wir.Set!FIELD_2(V.Global.sOrder)
+F.ODBC.conx!wir.Set!FIELD_3(V.Global.sOrdLine)
+F.ODBC.conx!wir.Set!FIELD_4(V.Global.sPart)
+F.ODBC.conx!wir.Set!FIELD_5(V.Global.sFromLoc)
+F.ODBC.conx!wir.Set!FIELD_6(V.Global.sLot)
+F.ODBC.conx!wir.Set!FIELD_7(V.Global.sBin)
+F.ODBC.conx!wir.Set!FIELD_8(V.Global.sHeat)
+F.ODBC.conx!wir.Set!FIELD_9(V.Global.sSerial)
+F.ODBC.conx!wir.Set!FIELD_10(V.Global.sContainer)
+f.ODBC.conx!wir.Set!FIELD_14(v.Global.sQuantity)
+F.ODBC.conx!wir.Set!FIELD_15(0.0000)
+F.ODBC.conx!wir.Set!FIELD_16(V.Global.sWeight)
+f.ODBC.conx!wir.Set!FIELD_22("N")
+F.ODBC.conx!wir.Set!FIELD_23("N")
+F.ODBC.conx!wir.Set!FIELD_24("N")
+F.ODBC.conx!wir.Set!ERROR_ID(0)
+F.ODBC.conx!wir.Update
+F.ODBC.conx!wir.Close
+
+'write the wireless header record
+V.Local.sSql.Set("SELECT * from WIRELESS_HDR")
+Function.ODBC.Connection!Conx.OpenRecordsetRW("rstNew",V.Local.sSql)
+
+	Function.ODBC.Conx!rstNew.AddNew
+	Function.ODBC.Conx!rstNew.Set!TRANS_ID(V.Local.stransID)
+	Function.ODBC.Conx!rstNew.Set!TRANS_TYPE("S20")
+	Function.ODBC.Conx!rstNew.Set!ATTEMPTED_DATE("00000000")
+	Function.ODBC.Conx!rstNew.Set!ATTEMPTED_TIME("00000000")
+	'Function.ODBC.Conx!rstNew.Set!LABEL_PRINTER(V.Global.sPrinter)
+	Function.ODBC.Conx!rstNew.Set!USER_ID(V.Global.sUserID)
+	Function.ODBC.Conx!rstNew.Set!BATCH(0)
+	F.ODBC.Conx!rstNew.Update
+	F.ODBC.Conx!rstNew.Close
+
+
+F.Intrinsic.String.Build("Container {0} weight set to {1}",v.Global.sContainer,v.Global.sWeight,v.Global.sResult)
+f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Global.sResult)
+f.Intrinsic.Control.CallSub(check_transactions)
+F.Intrinsic.Control.ExitSub
+Program.Sub.set_weight.End
+
+Program.Sub.get_packno.Start
+v.Local.ssql.Declare(String)
+v.Local.sReturn.Declare(String)
+v.Local.fPacklist.Declare(Float)
+v.Local.sPacklist.Declare(String)
+
+'..............check to see if the order has already been staged
+f.Intrinsic.String.Build("select top 1 pck_no, order_no from v_bol_pack_dtl where order_no = '{0}'",v.Global.sOrder,v.Local.ssql)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.ssql,v.Local.sReturn)
+'..............if the return value is null, there's no packlist no and we  have to get the next one
+f.Intrinsic.Control.If(v.Local.sReturn,=,"")
+	Function.Global.General.ReadOption(401060,3,0,V.Local.fPacklist)
+	f.Intrinsic.String.ConvertToString(v.Local.fPacklist,v.Local.sPacklist)
+	f.Intrinsic.String.LPad(v.Local.sPacklist,"0",7,v.Global.sPackNo)
+	v.Global.bPackIterate.Set(True)
+f.Intrinsic.Control.Else
+	f.Intrinsic.String.Split(v.Local.sReturn,"*!*",v.Local.sReturn)
+	v.Global.sPackNo.Set(v.Local.sReturn(0))
+f.Intrinsic.Control.EndIf								
+
+f.Intrinsic.Control.ExitSub
+
+Program.Sub.get_packno.End
+
+Program.Sub.get_carton.Start
+v.Local.ssql.Declare(String)
+v.Local.sQuantity.Declare(String)
+v.Local.sOrder.Declare(String)
+v.Local.sReturn.Declare(String)
+v.Local.sResult.Declare(String)
+
+f.Intrinsic.String.LPad(v.Global.sContainer,"0",8,v.Global.sContainer)
+'check if carton is closed out
+'f.Intrinsic.String.Build("select pkgd_weight from bol_carton_num where pck_no = '{0}' and crtn_no = '{1}'",v.Global.sPackNo,v.Global.sContainer,v.Local.ssql)
+'f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.ssql,v.Local.sReturn)
+'f.Intrinsic.Control.If(v.Local.sReturn,>,"0.0000")
+'	f.Intrinsic.String.Build("<br><font color = 'red'>Failed: </font> Container {0} for PackList {1} is already closed</br>",v.Global.sContainer,v.Global.sPackNo,v.Local.sResult)
+'	f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Local.sResult)
+'	f.Intrinsic.Control.CallSub(unload)
+'f.Intrinsic.Control.EndIf
+
+'if there is no submitted quantity, then they are closing a container with no quantity:  we need to retrieve some information to submit the S20 but won't stage a new record
+f.Intrinsic.Control.If(v.Global.sQuantity,=,"")
+	f.Intrinsic.String.Build("select top 1 part, qty, order_line, lot, bin, heat, serial  from bol_pack_dtl where pck_no = '{0}' and crtn_no = '{1}'",v.Global.sPackNo,v.Global.sContainer,v.Local.ssql)
+	f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.ssql,v.Local.sReturn)
+	f.Intrinsic.Control.If(v.Local.sReturn,<>,"")
+	f.Intrinsic.String.Split(v.Local.sReturn,"*!*",v.Local.sReturn)
+	V.Global.sPart.Set(V.Local.sReturn(0))
+	V.Global.sQuantity.Set(V.Local.sReturn(1))
+	v.Global.sOrdLine.Set(v.Local.sReturn(2))
+	v.Global.sLot.Set(v.Local.sReturn(3))
+	v.Global.sBin.Set(v.Local.sReturn(4))
+	v.Global.sHeat.Set(v.Local.sReturn(5))
+	v.Global.sSerial.Set(v.Local.sReturn(6))
+	V.Global.bStage.Set(False)
+	f.Intrinsic.Control.Else
+	f.Intrinsic.String.Build("<br><font color = 'red'>FAILED:</font> Sales Order {1} or Container {0}</br><br>ES INCORRECTO</br>",v.Global.sContainer,v.Global.sOrder,v.Global.sResult)
+	f.Global.Mobile.SetCustomResult(v.Caller.CompanyCode,v.Global.sTransID,v.Global.sResult)
+	f.Intrinsic.Control.CallSub(unload)
+	f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.ExitSub
+
+Program.Sub.get_carton.End
+
+Program.Sub.get_newline.Start
+v.Local.sSql.Declare(String)
+v.Local.sReturn.Declare(String)
+
+'..........we have to get the NEW line number from the sales order before we can stage
+'f.Intrinsic.String.Build("select record_no from v_order_lines where order_no = '{0}' and part = '{1}'",v.Global.sOrder,v.Global.sPart,v.Local.ssql)
+'f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.ssql,v.Local.sReturn)
+'v.Global.sOrdLine.Set(v.Local.sReturn)
+'f.Intrinsic.String.Left(v.Global.sOrdLine,3,v.Global.sOrdLine)
+'Function.Intrinsic.Debug.InvokeDebugger
+Function.Intrinsic.Debug.Stop
+
+'..........we have to get the NEW line number from the sales order before we can stage
+f.Intrinsic.String.Build("select record_no from v_order_lines where order_no = '{0}' and part = '{1}'",v.Global.sOrder,v.Global.sPart,v.Local.ssql)
+f.ODBC.Connection!conx.ExecuteAndReturn(v.Local.ssql,v.Local.sReturn)
+F.Intrinsic.Control.If(V.Local.sReturn.Long,<,1)
+    F.Intrinsic.Control.DoUntil(V.Local.sReturn.Long,>,0)
+        F.ODBC.Connection!conx.ExecuteAndReturn(v.Local.sSql,v.Local.sReturn)
+    F.Intrinsic.Control.Loop
+F.Intrinsic.Control.EndIf
+v.Global.sOrdLine.Set(v.Local.sReturn)
+f.Intrinsic.String.Left(v.Global.sOrdLine,3,v.Global.sOrdLine)
+
+f.Intrinsic.Control.ExitSub
+Program.Sub.get_newline.End
+
+Program.Sub.print_label.Start
+'part, pack_no, qty, description,carton, order_no, weight
+'pulling in all the pack detail records for the carton number that was passed
+'plus the carton_num info and printing all labels for that carton in a single call
+v.Local.ssql.Declare(string)
+v.Local.iBIRptID.Declare(Long)
+v.Local.iBIRunID.Declare(Long)
+v.Local.iLogID.Declare(Long)
+
+
+F.Global.BI.GetRunID(V.Local.iBIRunID)
+F.Global.BI.GetIDFromName("GAB_4563_PACK_LABEL.lab",V.Local.iBIRptID)
+F.Global.BI.StartLogging(V.Local.iBIRunID,V.Local.iBIRptID,-1,"",V.Local.iLogID)
+
+v.uGlobal.uPrintLabel.Redim(-1,-1)
+
+'getting the carton and weight
+'1)print carton label
+F.Intrinsic.Control.If(V.Global.sWeight,=,"")
+	f.Intrinsic.String.Build("SELECT '2' AS LABEL_COPY,'' AS U4,'' AS U5,'' AS U6,B.PCK_NO AS PACK_NO, B.CRTN_NO AS CARTON, B.PKGD_WEIGHT AS WEIGHT, H.PMNT_TYPE AS PART, H.PMNT_REQ AS QTY, H.TRNSFR_BIN AS DESCR, H.FACILITY AS ORDER_NO FROM V_BOL_CARTON_NUM B LEFT JOIN V_STAGING_HEADER H ON B.PCK_NO = H.PCK_NO WHERE PCK_NO = '{0}' AND CRTN_NO = '{1}'",V.Global.sPackNo,V.Global.sContainer,v.Global.sWeight,V.Local.ssql)
+F.Intrinsic.Control.Else
+	f.Intrinsic.String.Build("SELECT '2' AS LABEL_COPY,'' AS U4,'' AS U5,'' AS U6,B.PCK_NO AS PACK_NO, B.CRTN_NO AS CARTON, {2} AS WEIGHT, H.PMNT_TYPE AS PART, H.PMNT_REQ AS QTY, H.TRNSFR_BIN AS DESCR, H.FACILITY AS ORDER_NO FROM V_BOL_CARTON_NUM B LEFT JOIN V_STAGING_HEADER H ON B.PCK_NO = H.PCK_NO WHERE PCK_NO = '{0}' AND CRTN_NO = '{1}'",V.Global.sPackNo,V.Global.sContainer,v.Global.sWeight,V.Local.ssql)
+F.Intrinsic.Control.EndIf
+F.ODBC.Connection!conx.OpenRecordsetRO("RSTCRT",V.Local.ssql)
+Function.Intrinsic.Variable.LoadUDTFromRecordset("CONX","RSTCRT","V.uGlobal.uPrintLabel",True,1000)
+f.ODBC.conx!RSTCRT.Close
+
+'getting pack detail
+'2)print CARTON part label
+F.Intrinsic.String.Build("SELECT '1' AS LABEL_COPY,'' AS U4,'' AS U5,'' AS U6,P.PCK_NO AS PACK_NO, P.ORDER_NO, P.CRTN_NO AS CARTON, P.PART AS PART, sum(P.QTY) as QTY, max(I.DESCRIPTION) AS DESCR, max(P.SERIAL) AS WEIGHT FROM V_BOL_PACK_DTL P LEFT JOIN V_INVENTORY_MSTR I ON P.PART = I.PART AND P.LOCN = I.LOCATION WHERE PCK_NO = '{0}' AND CRTN_NO = '{1}' AND ORDER_NO = '{2}' GROUP BY P.PCK_NO, P.ORDER_NO, P.CRTN_NO, P.PART",v.Global.sPackNo,v.Global.sContainer,V.Global.sOrder,V.Local.ssql)
+f.ODBC.Connection!conx.OpenRecordsetRO("RSTLAB",V.Local.ssql)
+Function.Intrinsic.Variable.LoadUDTFromRecordset("CONX","RSTLAB","V.uGlobal.uPrintLabel",True,1000)
+F.ODBC.conx!RSTLAB.Close
+
+'3)print misc inv_extra CARTON part labels; user4,user5,user6
+'USER4 LABEL - SIZE
+F.Intrinsic.String.Build("SELECT '1' AS LABEL_COPY,IX.USER4 AS U4,'' AS U5,'' AS U6,P.PCK_NO AS PACK_NO, P.ORDER_NO, P.CRTN_NO AS CARTON, P.PART AS PART, sum(P.QTY) as QTY, max(I.DESCRIPTION) AS DESCR, max(P.SERIAL) AS WEIGHT FROM V_BOL_PACK_DTL P LEFT JOIN V_INVENTORY_MSTR I ON P.PART = I.PART AND P.LOCN = I.LOCATION INNER JOIN V_INV_EXTRA IX ON P.PART=IX.PART AND P.LOCN=IX.LOCATION WHERE PCK_NO = '{0}' AND CRTN_NO = '{1}' AND ORDER_NO = '{2}' GROUP BY P.PCK_NO, P.ORDER_NO, P.CRTN_NO, P.PART, IX.USER4",v.Global.sPackNo,v.Global.sContainer,V.Global.sOrder,V.Local.ssql)
+f.ODBC.Connection!conx.OpenRecordsetRO("RSTLABIX",V.Local.ssql)
+Function.Intrinsic.Variable.LoadUDTFromRecordset("CONX","RSTLABIX","V.uGlobal.uPrintLabel",True,1000)
+F.ODBC.conx!RSTLABIX.Close
+'USER5 LABEL - COLOR
+F.Intrinsic.String.Build("SELECT '1' AS LABEL_COPY,'' AS U4,IX.USER5 AS U5,'' AS U6,P.PCK_NO AS PACK_NO, P.ORDER_NO, P.CRTN_NO AS CARTON, P.PART AS PART, sum(P.QTY) as QTY, max(I.DESCRIPTION) AS DESCR, max(P.SERIAL) AS WEIGHT FROM V_BOL_PACK_DTL P LEFT JOIN V_INVENTORY_MSTR I ON P.PART = I.PART AND P.LOCN = I.LOCATION INNER JOIN V_INV_EXTRA IX ON P.PART=IX.PART AND P.LOCN=IX.LOCATION WHERE PCK_NO = '{0}' AND CRTN_NO = '{1}' AND ORDER_NO = '{2}' GROUP BY P.PCK_NO, P.ORDER_NO, P.CRTN_NO, P.PART, IX.USER5",v.Global.sPackNo,v.Global.sContainer,V.Global.sOrder,V.Local.ssql)
+f.ODBC.Connection!conx.OpenRecordsetRO("RSTLABIX",V.Local.ssql)
+Function.Intrinsic.Variable.LoadUDTFromRecordset("CONX","RSTLABIX","V.uGlobal.uPrintLabel",True,1000)
+F.ODBC.conx!RSTLABIX.Close
+'USER6 LABEL - UM
+F.Intrinsic.String.Build("SELECT '1' AS LABEL_COPY,'' AS U4,'' AS U5,IX.USER6 AS U6,P.PCK_NO AS PACK_NO, P.ORDER_NO, P.CRTN_NO AS CARTON, P.PART AS PART, sum(P.QTY) as QTY, max(I.DESCRIPTION) AS DESCR, max(P.SERIAL) AS WEIGHT FROM V_BOL_PACK_DTL P LEFT JOIN V_INVENTORY_MSTR I ON P.PART = I.PART AND P.LOCN = I.LOCATION INNER JOIN V_INV_EXTRA IX ON P.PART=IX.PART AND P.LOCN=IX.LOCATION WHERE PCK_NO = '{0}' AND CRTN_NO = '{1}' AND ORDER_NO = '{2}' GROUP BY P.PCK_NO, P.ORDER_NO, P.CRTN_NO, P.PART, IX.USER6",v.Global.sPackNo,v.Global.sContainer,V.Global.sOrder,V.Local.ssql)
+f.ODBC.Connection!conx.OpenRecordsetRO("RSTLABIX",V.Local.ssql)
+Function.Intrinsic.Variable.LoadUDTFromRecordset("CONX","RSTLABIX","V.uGlobal.uPrintLabel",True,1000)
+F.ODBC.conx!RSTLABIX.Close
+
+f.Global.BI.StopLogging(v.Local.iLogID)
+'print if records exist in UDT
+f.Intrinsic.Control.If(v.uGlobal.uPrintLabel.UBound,>,-1)
+	Function.Global.BI.PrintCodesoftLabelFromUDT(v.Local.iBIRunID,v.Local.iLogID,"v.uGlobal.uPrintLabel","",v.Global.sPrinter,True)
+f.Intrinsic.Control.EndIf
+f.Intrinsic.Control.ExitSub
+
+
+
+
+Program.Sub.print_label.End
+
+Program.Sub.set_SOline_tranferToLoc.Start
+v.Local.ssql.Declare(String)
+v.Local.sReturn.Declare(String)
+f.Intrinsic.String.Build("update order_lines set trnsfr_locn = '2' where record_type = 'L' and order_no = '{0}'",v.Global.sOrder,v.Local.ssql)
+f.ODBC.Connection!conx.Execute(v.Local.ssql)
+f.Intrinsic.Control.ExitSub
+Program.Sub.set_SOline_tranferToLoc.End
+
+Program.Sub.Comments.Start
+${$0$}$GAB_OE_STAGING$}$DFINCH$}$4/19/2017 6:54:27 PM$}$False
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$The project is a custom mobile transaction.  It's purpose is to scan the sales order number, the work order number, and enter a quantity.  The script will check the sales order to see if the part on the work order is also on the sales order.  If it's not, it will add it to the sales order.  If it is, it will update the quantity.  Once the sales order line has been added, a staging record will be written.  If the staged shipment doesn't exist, it will create it.  If the staged shipment does exist, it will update the shipment by adding a new line, or updating an existing line.
+Program.Sub.Comments.End
